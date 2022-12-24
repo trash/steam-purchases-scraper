@@ -4,6 +4,10 @@ import log from './log';
 
 type GameRecord = Airtable.Record<{ Name: string }>;
 
+export type GamePurchaseUpdateEntry = {
+    fields: GamePurchaseFields;
+};
+
 export class AirtableService {
     gamesTable: Airtable.Table<GameFields>;
     gamePurchasesTable: Airtable.Table<GamePurchaseFields>;
@@ -37,10 +41,16 @@ export class AirtableService {
             });
     }
 
-    async updateGamePurchases(
-        gamePurchases: { id: string; fields: GamePurchaseFields }[]
-    ) {
-        console.log(gamePurchases);
+    async updateGamePurchases(gamePurchases: GamePurchaseUpdateEntry[]) {
+        const validPurchases = gamePurchases.filter(
+            (purchase) => purchase !== null
+        );
+        console.log(validPurchases);
+
+        return this.gamePurchasesTable
+            .create(validPurchases)
+            .then((whatever) => console.log('whatever', whatever))
+            .catch((err) => console.error(err));
     }
 }
 

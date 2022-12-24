@@ -4,19 +4,19 @@ export enum GameSystem {
 }
 
 export enum Retailer {
-    Amazon,
-    Steam,
-    EBay,
-    Microsoft,
+    Amazon = 'Amazon',
+    Steam = 'Steam',
+    Ebay = 'Ebay',
+    Microsoft = 'Microsoft',
 }
 export enum Condition {
-    New,
-    Used,
+    New = 'New',
+    Used = 'Used',
 }
 
 export enum PhysicalDigital {
-    Physical,
-    Digital,
+    Physical = 'Physical',
+    Digital = 'Digital',
 }
 
 export type GamePurchaseFields = Partial<{

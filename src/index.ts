@@ -1,5 +1,5 @@
 import path from 'path';
-import { AirtableService } from './airtable';
+import { AirtableService, GamePurchaseUpdateEntry } from './airtable';
 import {
     Condition,
     GamePurchaseFields,
@@ -28,41 +28,48 @@ async function updateAirtable(results: FetchGamesReturn) {
 
     const slicebefore = results.rowsWithGames.slice(0, 3);
 
-    const gamesWithIds = await slicebefore.map(async (purchase) => {
-        const dagames = await Promise.all(
-            purchase.games.map(async (gameName) => {
-                const recordId = await airtable.getGameIdByName(gameName);
-                console.log('got the record id');
-                if (recordId) {
-                    const singleGamePurchase = purchase.games.length > 1;
-                    if (singleGamePurchase) {
-                        console.log('need to manually enter the price');
-                    }
+    const gamesWithIds = (
+        await Promise.all(
+            slicebefore.map(async (purchase) => {
+                return await Promise.all(
+                    purchase.games.map(async (gameName) => {
+                        const recordId = await airtable.getGameIdByName(
+                            gameName
+                        );
+                        console.log('got the record id');
+                        if (recordId) {
+                            const singleGamePurchase =
+                                purchase.games.length > 1;
+                            if (singleGamePurchase) {
+                                console.log('need to manually enter the price');
+                            }
 
-                    const fields: GamePurchaseFields = {
-                        'Date Purchased': formatDate(purchase.date),
-                        Condition: Condition.New,
-                        'Physical/Digital': PhysicalDigital.Digital,
-                        'Shipping Cost': 0,
-                        System: [GameSystem.PC],
-                        Retailer: Retailer.Steam,
-                        // -1 will signal I need to update these records manually due to price not being itemized
-                        // Price: singleGamePurchase ? purchase.price : -1,
-                    };
-                    return {
-                        fields,
-                        id: recordId,
-                        name: gameName,
-                    };
-                }
-                return null;
+                            const fields: GamePurchaseFields = {
+                                Games: [recordId],
+                                'Date Purchased': formatDate(purchase.date),
+                                Condition: Condition.New,
+                                'Physical/Digital': PhysicalDigital.Digital,
+                                'Shipping Cost': 0,
+                                System: [GameSystem.PC],
+                                Retailer: Retailer.Steam,
+                                // -1 will signal I need to update these records manually due to price not being itemized
+                                // Price: singleGamePurchase ? purchase.price : -1,
+                            };
+                            return {
+                                fields,
+                            };
+                        }
+                        return null;
+                    })
+                );
             })
-        );
-        console.log('dagames', dagames);
-        return dagames;
-    });
+        )
+    ).reduce((aggregate, nextGames) => {
+        return aggregate.concat(nextGames);
+    }, [] as GamePurchaseUpdateEntry[]);
+    await airtable.updateGamePurchases(gamesWithIds);
 
-    console.log('end of program', gamesWithIds);
+    console.log('end of program');
 }
 
 async function main() {
