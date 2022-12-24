@@ -1,61 +1,80 @@
 import path from 'path';
-import puppeteer from 'puppeteer';
+import { AirtableService } from './airtable';
+import {
+    Condition,
+    GamePurchaseFields,
+    PhysicalDigital,
+    Retailer,
+    GameSystem,
+} from './constants';
+require('dotenv').config();
+import { fetchGames, FetchGamesReturn } from './steam';
 
-async function main() {
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-    // Need to have a steam-purchases.html file in the root of the project
-    const htmlFilePath = path.join(__dirname, '../steam-purchases.html');
-    console.log(htmlFilePath);
-    await page.goto(`file:${htmlFilePath}`);
-    await page.waitForSelector('.responsive_page_frame');
-    const results = await page.evaluate(() => {
-        // Each row is a purchase. Get rid of header row with slice.
-        const rows = [...document.querySelectorAll('tr')]
-            .slice(1)
-            .map((row) => {
-                // The node with the list of games
-                const gamesContainerNode = row.querySelector('.wht_items');
-                // If there's a wth_payment div that's a gift. Filter those out separately.
-                if (gamesContainerNode?.querySelector('.wth_payment')) {
+// For January 3, 2022, returns 2022-01-03
+function formatDate(dateString: string | null): string {
+    if (!dateString) {
+        return '';
+    }
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${year}-${month}-${day}`;
+}
+
+async function updateAirtable(results: FetchGamesReturn) {
+    const airtablePersonalToken = process.env.AIRTABLE_PERSONAL_TOKEN;
+    const airtable = new AirtableService(airtablePersonalToken);
+
+    const slicebefore = results.rowsWithGames.slice(0, 3);
+
+    const gamesWithIds = await slicebefore.map(async (purchase) => {
+        const dagames = await Promise.all(
+            purchase.games.map(async (gameName) => {
+                const recordId = await airtable.getGameIdByName(gameName);
+                console.log('got the record id');
+                if (recordId) {
+                    const singleGamePurchase = purchase.games.length > 1;
+                    if (singleGamePurchase) {
+                        console.log('need to manually enter the price');
+                    }
+
+                    const fields: GamePurchaseFields = {
+                        'Date Purchased': formatDate(purchase.date),
+                        Condition: Condition.New,
+                        'Physical/Digital': PhysicalDigital.Digital,
+                        'Shipping Cost': 0,
+                        System: [GameSystem.PC],
+                        Retailer: Retailer.Steam,
+                        // -1 will signal I need to update these records manually due to price not being itemized
+                        // Price: singleGamePurchase ? purchase.price : -1,
+                    };
                     return {
-                        isGift: true,
-                        // For now just return the content of the div.
-                        content: gamesContainerNode
-                            ?.querySelector(':scope > div')
-                            .innerHTML.trim(),
+                        fields,
+                        id: recordId,
+                        name: gameName,
                     };
                 }
-                const dateElement = row.querySelector('.wht_date');
-
-                // The direct descent divs are each a game a part of the purchase.
-                let gamesNodesQueryList =
-                    gamesContainerNode?.querySelectorAll(':scope > div');
-
-                const gamesNodes =
-                    gamesNodesQueryList !== undefined
-                        ? Array.from(gamesNodesQueryList)
-                        : [];
-
-                return {
-                    isGift: false,
-                    date: dateElement?.textContent,
-                    games: gamesNodes.map((node) => node.textContent.trim()),
-                };
-            });
-
-        return {
-            rowsWithGames: rows.filter((x) => !x.isGift),
-            rowsWithoutGames: rows.filter((x) => x.isGift),
-        };
+                return null;
+            })
+        );
+        console.log('dagames', dagames);
+        return dagames;
     });
-    browser.close();
 
+    console.log('end of program', gamesWithIds);
+}
+
+async function main() {
+    const htmlFilePath = path.join(__dirname, '../steam-purchases.html');
+    const results = await fetchGames(htmlFilePath);
     console.log(
         results.rowsWithGames.length,
         results.rowsWithoutGames.length,
         results
     );
+
+    await updateAirtable(results);
 }
 
 main();

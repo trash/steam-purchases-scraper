@@ -1,3 +1,6 @@
 node_modules
 steam-purchases.html
 dist
+.env
+src/airtableIds.json
+yarn-error.log
