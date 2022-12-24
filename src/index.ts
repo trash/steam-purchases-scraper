@@ -1,12 +1,10 @@
-// import { promises } from 'fs';
 import path from 'path';
 import puppeteer from 'puppeteer';
 
-// promises.readFile('steam-purchases.html', 'utf8').then(console.log);
 async function main() {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
-    // await page.goto('file://C:/Users/compoundeye/test.html');
+    // Need to have a steam-purchases.html file in the root of the project
     const htmlFilePath = path.join(__dirname, '../steam-purchases.html');
     console.log(htmlFilePath);
     await page.goto(`file:${htmlFilePath}`);
@@ -16,20 +14,21 @@ async function main() {
         const rows = [...document.querySelectorAll('tr')]
             .slice(1)
             .map((row) => {
-                const dateElement = row.querySelector('.wht_date');
-
                 // The node with the list of games
                 const gamesContainerNode = row.querySelector('.wht_items');
-                // If there's a wth_payment div that's a gift. Filter those out
+                // If there's a wth_payment div that's a gift. Filter those out separately.
                 if (gamesContainerNode?.querySelector('.wth_payment')) {
                     return {
                         isGift: true,
+                        // For now just return the content of the div.
                         content: gamesContainerNode
                             ?.querySelector(':scope > div')
                             .innerHTML.trim(),
                     };
                 }
-                //
+                const dateElement = row.querySelector('.wht_date');
+
+                // The direct descent divs are each a game a part of the purchase.
                 let gamesNodesQueryList =
                     gamesContainerNode?.querySelectorAll(':scope > div');
 
@@ -50,12 +49,13 @@ async function main() {
             rowsWithoutGames: rows.filter((x) => x.isGift),
         };
     });
+    browser.close();
+
     console.log(
         results.rowsWithGames.length,
         results.rowsWithoutGames.length,
         results
     );
-    browser.close();
 }
 
 main();
