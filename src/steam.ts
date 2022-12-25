@@ -4,6 +4,7 @@ type GamePurchase = {
     isGift: false;
     date: string | null;
     games: string[];
+    price: number | null;
 };
 
 type GiftGamePurchase = {
@@ -25,6 +26,21 @@ export async function fetchGames(
     await page.goto(`file:${htmlFilePath}`);
     await page.waitForSelector('.responsive_page_frame');
     const results = await page.evaluate(() => {
+        function getPriceFromPriceElement(
+            priceElement: Element | null
+        ): number | null {
+            if (!priceElement) {
+                return null;
+            }
+            // Indicates a refund or sale of trading cards or something
+            if (priceElement.querySelector('.wth_payment')) {
+                return null;
+            }
+            // Format: '$13.31'
+            const priceString = priceElement.textContent.trim();
+            return parseFloat(priceString.slice(1));
+        }
+
         // Each row is a purchase. Get rid of header row with slice.
         const rows = [...document.querySelectorAll('tr')]
             .slice(1)
@@ -42,6 +58,7 @@ export async function fetchGames(
                     };
                 }
                 const dateElement = row.querySelector('.wht_date');
+                const priceElement = row.querySelector('.wht_total');
 
                 // The direct descent divs are each a game a part of the purchase.
                 let gamesNodesQueryList =
@@ -53,11 +70,12 @@ export async function fetchGames(
                         : [];
 
                 return {
-                    isGift: false as false,
                     date: dateElement?.textContent
                         ? new Date(dateElement.textContent).toString()
                         : null,
                     games: gamesNodes.map((node) => node.textContent.trim()),
+                    isGift: false as false,
+                    price: getPriceFromPriceElement(priceElement),
                 };
             });
 

@@ -45,11 +45,9 @@ export class AirtableService {
         const validPurchases = gamePurchases.filter(
             (purchase) => purchase !== null
         );
-        console.log(validPurchases);
 
         return this.gamePurchasesTable
             .create(validPurchases)
-            .then((whatever) => console.log('whatever', whatever))
             .catch((err) => console.error(err));
     }
 }

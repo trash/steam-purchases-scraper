@@ -34,3 +34,5 @@ export type GamePurchaseFields = Partial<{
 }>;
 
 export type GameFields = { Name: string };
+
+export const AIRTABLE_MAX_RECORDS_PER_REQUEST = 10;

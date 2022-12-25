@@ -7,6 +7,7 @@ import {
     Retailer,
     GameSystem,
 } from './constants';
+import log from './log';
 require('dotenv').config();
 import { fetchGames, FetchGamesReturn } from './steam';
 
@@ -26,7 +27,7 @@ async function updateAirtable(results: FetchGamesReturn) {
     const airtablePersonalToken = process.env.AIRTABLE_PERSONAL_TOKEN;
     const airtable = new AirtableService(airtablePersonalToken);
 
-    const slicebefore = results.rowsWithGames.slice(0, 3);
+    const slicebefore = results.rowsWithGames.slice(2, 5);
 
     const gamesWithIds = (
         await Promise.all(
@@ -36,13 +37,9 @@ async function updateAirtable(results: FetchGamesReturn) {
                         const recordId = await airtable.getGameIdByName(
                             gameName
                         );
-                        console.log('got the record id');
                         if (recordId) {
                             const singleGamePurchase =
-                                purchase.games.length > 1;
-                            if (singleGamePurchase) {
-                                console.log('need to manually enter the price');
-                            }
+                                purchase.games.length <= 1;
 
                             const fields: GamePurchaseFields = {
                                 Games: [recordId],
@@ -53,7 +50,7 @@ async function updateAirtable(results: FetchGamesReturn) {
                                 System: [GameSystem.PC],
                                 Retailer: Retailer.Steam,
                                 // -1 will signal I need to update these records manually due to price not being itemized
-                                // Price: singleGamePurchase ? purchase.price : -1,
+                                Price: singleGamePurchase ? purchase.price : -1,
                             };
                             return {
                                 fields,
@@ -67,6 +64,7 @@ async function updateAirtable(results: FetchGamesReturn) {
     ).reduce((aggregate, nextGames) => {
         return aggregate.concat(nextGames);
     }, [] as GamePurchaseUpdateEntry[]);
+    // console.log(gamesWithIds);
     await airtable.updateGamePurchases(gamesWithIds);
 
     console.log('end of program');
@@ -77,8 +75,8 @@ async function main() {
     const results = await fetchGames(htmlFilePath);
     console.log(
         results.rowsWithGames.length,
-        results.rowsWithoutGames.length,
-        results
+        results.rowsWithoutGames.length
+        // results
     );
 
     await updateAirtable(results);
