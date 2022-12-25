@@ -36,3 +36,17 @@ export type GamePurchaseFields = Partial<{
 export type GameFields = { Name: string };
 
 export const AIRTABLE_MAX_RECORDS_PER_REQUEST = 10;
+
+export type GamePurchase = {
+    isGift: false;
+    date: string | null;
+    games: string[];
+    price: number | null;
+};
+
+export type GiftGamePurchase = {
+    isGift: true;
+    content: string;
+};
+
+export const skippedGamesFileName = 'skippedGames.json';

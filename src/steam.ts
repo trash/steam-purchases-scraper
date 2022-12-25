@@ -1,20 +1,8 @@
 import puppeteer from 'puppeteer';
-
-type GamePurchase = {
-    isGift: false;
-    date: string | null;
-    games: string[];
-    price: number | null;
-};
-
-type GiftGamePurchase = {
-    isGift: true;
-    content: string;
-};
-
+import { GamePurchase, GiftGamePurchase } from './constants';
 export type FetchGamesReturn = {
-    rowsWithGames: GamePurchase[];
-    rowsWithoutGames: GiftGamePurchase[];
+    gamePurchases: GamePurchase[];
+    giftGamePurchases: GiftGamePurchase[];
 };
 
 export async function fetchGames(
@@ -79,19 +67,19 @@ export async function fetchGames(
                 };
             });
 
-        const rowsWithGames: GamePurchase[] = [];
-        const rowsWithoutGames: GiftGamePurchase[] = [];
+        const gamePurchases: GamePurchase[] = [];
+        const giftGamePurchases: GiftGamePurchase[] = [];
         rows.forEach((row) => {
             if (row.isGift) {
-                rowsWithoutGames.push(row);
+                giftGamePurchases.push(row);
             } else if (row.isGift === false) {
-                rowsWithGames.push(row);
+                gamePurchases.push(row);
             }
         });
 
         return {
-            rowsWithGames,
-            rowsWithoutGames,
+            gamePurchases,
+            giftGamePurchases,
         };
     });
     browser.close();
