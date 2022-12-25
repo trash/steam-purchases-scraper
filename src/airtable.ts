@@ -45,6 +45,9 @@ export class AirtableService {
         const validPurchases = gamePurchases.filter(
             (purchase) => purchase !== null
         );
+        if (!validPurchases.length) {
+            return;
+        }
 
         return this.gamePurchasesTable
             .create(validPurchases)

@@ -50,3 +50,4 @@ export type GiftGamePurchase = {
 };
 
 export const skippedGamesFileName = 'skippedGames.json';
+export const searchedGamesCacheFileName = 'searchedGamesCache.json';

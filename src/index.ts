@@ -10,6 +10,7 @@ import {
     GamePurchase,
     AIRTABLE_MAX_RECORDS_PER_REQUEST,
     skippedGamesFileName,
+    searchedGamesCacheFileName,
 } from './constants';
 import log from './log';
 require('dotenv').config();
@@ -62,7 +63,8 @@ async function writeSkippedGames(
 
 async function updateAirtable(
     results: FetchGamesReturn,
-    skippedGamesFilePath: string
+    skippedGamesFilePath: string,
+    searchedGamesCache: { [key: string]: boolean }
 ) {
     console.log(log.info('Starting Airtable update...'));
     const airtablePersonalToken = process.env.AIRTABLE_PERSONAL_TOKEN;
@@ -74,19 +76,19 @@ async function updateAirtable(
 
     // First reduce all the purchases to a list of all games. We still need a ref to the purchase for metadata
     // so just add it as a pointer.
-    const gamesWithPurchase = results.gamePurchases.reduce(
-        (allGames, nextPurchase) => {
+    const gamesWithPurchase = results.gamePurchases
+        .reduce((allGames, nextPurchase) => {
             return allGames.concat(
                 nextPurchase.games.map((g) => ({
                     gameName: g,
                     purchase: nextPurchase,
                 }))
             );
-        },
-        []
-    );
-    // FOR TESTING
-    // .slice(0, 20);
+        }, [])
+        // Filter out games we've already searched
+        .filter((g) => !searchedGamesCache[g.gameName])
+        // TODO: Right now we're just doing 50 at a time in case we error out. Should probably fix this.
+        .slice(0, 50);
 
     // Process them in batches based on Airtable's max records per request.
     for (
@@ -105,6 +107,9 @@ async function updateAirtable(
         const gamesWithIds = await Promise.all(
             // Process each purchase
             currentSlice.map(async ({ gameName, purchase }) => {
+                // Make sure to mark our cache. We mark both games with no id and games with an id.
+                searchedGamesCache[gameName] = true;
+
                 // Fetch each individual game in the purchase
                 const recordId = await airtable.getGameIdByName(gameName);
                 if (recordId) {
@@ -132,6 +137,26 @@ async function updateAirtable(
         log.info(`Writing skipped games to file: ${skippedGamesFilePath}`)
     );
     await writeSkippedGames(skippedGamesFilePath, skippedGames);
+
+    // Return the updated games cache so we can write it to disk.
+    return searchedGamesCache;
+}
+
+async function getSearchedGameCacheFromDisk(
+    searchedGamesCacheFilePath: string
+) {
+    const fileExists = await fs.promises
+        .access(searchedGamesCacheFilePath, fs.constants.F_OK)
+        .then(() => true)
+        .catch(() => false);
+    if (!fileExists) {
+        await fs.promises.writeFile(
+            searchedGamesCacheFilePath,
+            JSON.stringify({})
+        );
+    }
+    const buffer = await fs.promises.readFile(searchedGamesCacheFilePath);
+    return JSON.parse(buffer.toString());
 }
 
 async function main() {
@@ -141,11 +166,31 @@ async function main() {
         `Games: ${results.gamePurchases.length} Gifts: ${results.giftGamePurchases.length}`
     );
 
+    // Check for an existing searchedGamesCache file so we don't need to
+    // re-search for previously searched games.
+
     const skippedGamesFilePath = path.join(
         __dirname,
         `../${skippedGamesFileName}`
     );
-    await updateAirtable(results, skippedGamesFilePath);
+    const searchedGamesCacheFilePath = path.join(
+        __dirname,
+        `../${searchedGamesCacheFileName}`
+    );
+
+    let searchedGamesCache = await getSearchedGameCacheFromDisk(
+        searchedGamesCacheFilePath
+    );
+    searchedGamesCache = await updateAirtable(
+        results,
+        skippedGamesFilePath,
+        searchedGamesCache
+    );
+    // Write updated cache to disk
+    await fs.promises.writeFile(
+        searchedGamesCacheFilePath,
+        JSON.stringify(searchedGamesCache, null, 4)
+    );
 }
 
 main();

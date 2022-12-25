@@ -5,3 +5,4 @@ dist
 src/airtableIds.json
 yarn-error.log
 skippedGames.json
+searchedGamesCache.json
