@@ -16,6 +16,8 @@ import log from './log';
 require('dotenv').config();
 import { fetchGames, FetchGamesReturn } from './steam';
 
+const optionalArg = process.argv[2];
+
 async function asyncTimeout(timeoutMs: number) {
     return new Promise((resolve) => setTimeout(resolve, timeoutMs));
 }
@@ -165,32 +167,41 @@ async function main() {
     console.log(
         `Games: ${results.gamePurchases.length} Gifts: ${results.giftGamePurchases.length}`
     );
+    // Default behavior is to just log all the data parsed.
+    if (!optionalArg) {
+        console.log(log.info('Game purchases:'));
+        console.log(results.gamePurchases);
+        console.log(log.info('Gift game purchases:'));
+        console.log(results.giftGamePurchases);
+    }
 
-    // Check for an existing searchedGamesCache file so we don't need to
-    // re-search for previously searched games.
+    if (optionalArg === 'airtable') {
+        // Check for an existing searchedGamesCache file so we don't need to
+        // re-search for previously searched games.
 
-    const skippedGamesFilePath = path.join(
-        __dirname,
-        `../${skippedGamesFileName}`
-    );
-    const searchedGamesCacheFilePath = path.join(
-        __dirname,
-        `../${searchedGamesCacheFileName}`
-    );
+        const skippedGamesFilePath = path.join(
+            __dirname,
+            `../${skippedGamesFileName}`
+        );
+        const searchedGamesCacheFilePath = path.join(
+            __dirname,
+            `../${searchedGamesCacheFileName}`
+        );
 
-    let searchedGamesCache = await getSearchedGameCacheFromDisk(
-        searchedGamesCacheFilePath
-    );
-    searchedGamesCache = await updateAirtable(
-        results,
-        skippedGamesFilePath,
-        searchedGamesCache
-    );
-    // Write updated cache to disk
-    await fs.promises.writeFile(
-        searchedGamesCacheFilePath,
-        JSON.stringify(searchedGamesCache, null, 4)
-    );
+        let searchedGamesCache = await getSearchedGameCacheFromDisk(
+            searchedGamesCacheFilePath
+        );
+        searchedGamesCache = await updateAirtable(
+            results,
+            skippedGamesFilePath,
+            searchedGamesCache
+        );
+        // Write updated cache to disk
+        await fs.promises.writeFile(
+            searchedGamesCacheFilePath,
+            JSON.stringify(searchedGamesCache, null, 4)
+        );
+    }
 }
 
 main();
