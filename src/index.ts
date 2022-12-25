@@ -18,6 +18,17 @@ import { fetchGames, FetchGamesReturn } from './steam';
 
 const optionalArg = process.argv[2];
 
+const htmlFilePath = path.join(__dirname, '../steam-purchases.html');
+const searchedGamesCacheFilePath = path.join(
+    __dirname,
+    `../${searchedGamesCacheFileName}`
+);
+const skippedGamesFilePath = path.join(__dirname, `../${skippedGamesFileName}`);
+
+type SkippedGames = {
+    [key: string]: { gameName: string; purchase: GamePurchase };
+};
+
 async function asyncTimeout(timeoutMs: number) {
     return new Promise((resolve) => setTimeout(resolve, timeoutMs));
 }
@@ -53,10 +64,7 @@ function getAirtableUpdateFieldsFromGamePurchase(
     };
 }
 
-async function writeSkippedGames(
-    skippedGamesFilePath: string,
-    skippedGames: { gameName: string; purchase: GamePurchase }[]
-): Promise<void> {
+async function writeSkippedGames(skippedGames: SkippedGames): Promise<void> {
     return fs.promises.writeFile(
         skippedGamesFilePath,
         JSON.stringify(skippedGames, null, 4)
@@ -65,16 +73,12 @@ async function writeSkippedGames(
 
 async function updateAirtable(
     results: FetchGamesReturn,
-    skippedGamesFilePath: string,
-    searchedGamesCache: { [key: string]: boolean }
+    searchedGamesCache: { [key: string]: boolean },
+    skippedGames: SkippedGames
 ) {
     console.log(log.info('Starting Airtable update...'));
     const airtablePersonalToken = process.env.AIRTABLE_PERSONAL_TOKEN;
     const airtable = new AirtableService(airtablePersonalToken);
-
-    // Games that are skipped due to being in a bulk purchase should be added to a list
-    // so we can record them to be manually entered later.
-    const skippedGames: { gameName: string; purchase: GamePurchase }[] = [];
 
     // First reduce all the purchases to a list of all games. We still need a ref to the purchase for metadata
     // so just add it as a pointer.
@@ -123,46 +127,60 @@ async function updateAirtable(
                         fields,
                     };
                 }
-                skippedGames.push({ gameName, purchase });
+                skippedGames[gameName] = { gameName, purchase };
                 return null;
             })
         );
 
         await airtable.updateGamePurchases(gamesWithIds);
 
+        // Write to disk after each chunk in case something blows up.
+        await writeSearchedGamesCacheToDisk(searchedGamesCache);
+        await writeSkippedGames(skippedGames);
+
         // Wait 2 seconds before spamming the api with another 11 requests again
         await asyncTimeout(2000);
         console.log(log.info(`Batch ${i + 1} complete.`));
     }
 
-    console.log(
-        log.info(`Writing skipped games to file: ${skippedGamesFilePath}`)
-    );
-    await writeSkippedGames(skippedGamesFilePath, skippedGames);
+    // console.log(
+    //     log.info(`Writing skipped games to file: ${skippedGamesFilePath}`)
+    // );
 
     // Return the updated games cache so we can write it to disk.
     return searchedGamesCache;
 }
 
-async function getSearchedGameCacheFromDisk(
-    searchedGamesCacheFilePath: string
-) {
+async function getCacheFromDisk(filePath: string) {
     const fileExists = await fs.promises
-        .access(searchedGamesCacheFilePath, fs.constants.F_OK)
+        .access(filePath, fs.constants.F_OK)
         .then(() => true)
         .catch(() => false);
     if (!fileExists) {
-        await fs.promises.writeFile(
-            searchedGamesCacheFilePath,
-            JSON.stringify({})
-        );
+        await fs.promises.writeFile(filePath, JSON.stringify({}));
     }
-    const buffer = await fs.promises.readFile(searchedGamesCacheFilePath);
+    const buffer = await fs.promises.readFile(filePath);
     return JSON.parse(buffer.toString());
 }
 
+async function getSkippedGamesFromDisk() {
+    return getCacheFromDisk(skippedGamesFilePath);
+}
+
+async function getSearchedGameCacheFromDisk() {
+    return getCacheFromDisk(searchedGamesCacheFilePath);
+}
+
+async function writeSearchedGamesCacheToDisk(searchedGamesCache: {
+    [key: string]: boolean;
+}) {
+    await fs.promises.writeFile(
+        searchedGamesCacheFilePath,
+        JSON.stringify(searchedGamesCache, null, 4)
+    );
+}
+
 async function main() {
-    const htmlFilePath = path.join(__dirname, '../steam-purchases.html');
     const results = await fetchGames(htmlFilePath);
     console.log(
         `Games: ${results.gamePurchases.length} Gifts: ${results.giftGamePurchases.length}`
@@ -176,31 +194,14 @@ async function main() {
     }
 
     if (optionalArg === 'airtable') {
+        // Games that are skipped due to being in a bulk purchase should be added to a list
+        // so we can record them to be manually entered later.
+        const skippedGames = await getSkippedGamesFromDisk();
+
         // Check for an existing searchedGamesCache file so we don't need to
         // re-search for previously searched games.
-
-        const skippedGamesFilePath = path.join(
-            __dirname,
-            `../${skippedGamesFileName}`
-        );
-        const searchedGamesCacheFilePath = path.join(
-            __dirname,
-            `../${searchedGamesCacheFileName}`
-        );
-
-        let searchedGamesCache = await getSearchedGameCacheFromDisk(
-            searchedGamesCacheFilePath
-        );
-        searchedGamesCache = await updateAirtable(
-            results,
-            skippedGamesFilePath,
-            searchedGamesCache
-        );
-        // Write updated cache to disk
-        await fs.promises.writeFile(
-            searchedGamesCacheFilePath,
-            JSON.stringify(searchedGamesCache, null, 4)
-        );
+        const searchedGamesCache = await getSearchedGameCacheFromDisk();
+        await updateAirtable(results, searchedGamesCache, skippedGames);
     }
 }
 
